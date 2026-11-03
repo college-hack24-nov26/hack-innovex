@@ -1,4 +1,4 @@
-# Drishti: AI Navigation & Safety Assistant for Visually Impaired People
+# AuraSight Navigation & Safety Assistant for Visually Impaired People
 
 **Drishti** is an accessibility-first Android application designed to help blind and visually impaired individuals move safely and independently. The app operates **voice-first**, combining continuous rear-camera computer vision, Google Maps pedestrian routing & location sharing, Indian document/PAN card/Aadhaar/currency OCR, bus route & destination detection, and conversational AI assistance with Gemini 3.8 Flash. All feedback is delivered through loud spoken audio, high-contrast visual cues, and distinctive vibration patterns.
 
