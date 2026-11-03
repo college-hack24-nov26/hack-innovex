@@ -31,16 +31,17 @@ object AppStrings {
         }
     } else {
         when (lang) {
-            AppLanguage.MARATHI -> "बोलण्यासाठी कुठेही स्पर्श करा"
-            AppLanguage.HINDI -> "बोलने के लिए कहीं भी टैप करें"
-            AppLanguage.ENGLISH -> "TAP ANYWHERE TO SPEAK"
+            AppLanguage.MARATHI -> "माईक सुरू करण्यासाठी येथे दाबा"
+            AppLanguage.HINDI -> "माइक शुरू करने के लिए यहाँ दबाएं"
+            AppLanguage.ENGLISH -> "PRESS HERE TO SPEAK"
         }
     }
 
+
     fun tapToSpeakSubtitle(lang: AppLanguage) = when (lang) {
-        AppLanguage.MARATHI -> "'मी कुठे आहे?' विचारण्यासाठी किंवा मार्ग शोधण्यासाठी स्पर्श करा"
-        AppLanguage.HINDI -> "'मैं कहाँ हूँ?' पूछने या रास्ता खोजने के लिए टैप करें"
-        AppLanguage.ENGLISH -> "Touch screen to ask 'Where am I?' or set destination"
+        AppLanguage.MARATHI -> "'मी कुठे आहे?', 'घरी जा' किंवा काहीही विचारा"
+        AppLanguage.HINDI -> "'मैं कहाँ हूँ?', 'घर ले चलो' या कुछ भी पूछें"
+        AppLanguage.ENGLISH -> "Ask 'Where am I?', 'Take me home', or any question"
     }
 
     fun listeningPrompt(lang: AppLanguage) = when (lang) {
@@ -159,9 +160,22 @@ object AppStrings {
     }
 
     fun queryWhereAmI(lang: AppLanguage) = when (lang) {
-        AppLanguage.MARATHI -> "मी कुठे आहे?"
-        AppLanguage.HINDI -> "मैं कहाँ हूँ?"
-        AppLanguage.ENGLISH -> "Where am I?"
+        AppLanguage.MARATHI -> "मी आता कुठे आहे?"
+        AppLanguage.HINDI -> "मैं अभी कहाँ हूँ?"
+        AppLanguage.ENGLISH -> "Where am I right now?"
+    }
+
+
+
+    fun queryTakeMeHome(lang: AppLanguage) = when (lang) {
+        AppLanguage.MARATHI -> "मला घरी घेऊन चला"
+        AppLanguage.HINDI -> "मुझे घर ले चलो"
+        AppLanguage.ENGLISH -> "Take me home"
+    }
+    fun queryMyEmergencyDetails(lang: AppLanguage) = when (lang) {
+        AppLanguage.MARATHI -> "माझी सर्व सेव्ह केलेली माहिती काय आहे?"
+        AppLanguage.HINDI -> "मेरी सभी सहेजी गई जानकारी क्या है?"
+        AppLanguage.ENGLISH -> "What are all my saved details?"
     }
 
     fun queryShareLocation(lang: AppLanguage) = when (lang) {
@@ -176,11 +190,7 @@ object AppStrings {
         AppLanguage.ENGLISH -> "What is directly in front of me?"
     }
 
-    fun queryTakeMeHome(lang: AppLanguage) = when (lang) {
-        AppLanguage.MARATHI -> "मला घरी घेऊन चला"
-        AppLanguage.HINDI -> "मुझे घर ले चलो"
-        AppLanguage.ENGLISH -> "Take me home"
-    }
+
 
     // --- SAFETY DISCLAIMER CARD ---
     fun safetyTitle(lang: AppLanguage) = when (lang) {

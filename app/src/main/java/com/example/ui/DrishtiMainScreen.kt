@@ -235,13 +235,15 @@ fun DrishtiMainScreen(
                 lang = lang
             )
 
-            // 2. Tap-To-Speak Banner
-            TapToSpeakAccessibilityCard(
-                isListening = uiState.isListening,
-                recognizedText = uiState.recognizedText,
-                lang = lang,
-                onTap = { viewModel.toggleVoiceListening() }
-            )
+            // 2. Press-To-Speak Banner (ONLY VISIBLE IN ASSISTANT MODE!)
+            if (uiState.currentMode == AppMode.ASSISTANT) {
+                TapToSpeakAccessibilityCard(
+                    isListening = uiState.isListening,
+                    recognizedText = uiState.recognizedText,
+                    lang = lang,
+                    onTap = { viewModel.toggleVoiceListening() }
+                )
+            }
 
             // 3. Mode Selector Tabs
             ModeSelectorTabs(
@@ -345,13 +347,15 @@ fun DrishtiMainScreen(
                 }
             }
 
-            // 5. Bottom Voice Action Bar
-            VoiceAssistantBottomBar(
-                isListening = uiState.isListening,
-                recognizedText = uiState.recognizedText,
-                soundRms = uiState.soundRms,
-                onToggleListening = { viewModel.toggleVoiceListening() }
-            )
+            // 5. Bottom Voice Action Bar (ONLY VISIBLE IN ASSISTANT MODE!)
+            if (uiState.currentMode == AppMode.ASSISTANT) {
+                VoiceAssistantBottomBar(
+                    isListening = uiState.isListening,
+                    recognizedText = uiState.recognizedText,
+                    soundRms = uiState.soundRms,
+                    onToggleListening = { viewModel.toggleVoiceListening() }
+                )
+            }
         }
     }
 }
@@ -383,7 +387,7 @@ private fun TapToSpeakAccessibilityCard(
                 indication = null,
                 onClick = onTap
             )
-            .testTag("tap_anywhere_speak_card"),
+            .testTag("press_to_speak_card"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isListening) BrightCyan.copy(alpha = pulseAlpha) else DeepSurface
@@ -543,7 +547,6 @@ private fun ModeSelectorTabs(
         }
     }
 }
-
 @Composable
 private fun WalkingModeContent(
     obstacles: List<Obstacle>,
@@ -645,7 +648,7 @@ private fun WalkingModeContent(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "ROUTE: ${navData.destination}",
+                                text = "DESTINATION: ${navData.destination}",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = BrightCyan
@@ -661,82 +664,65 @@ private fun WalkingModeContent(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Stop walking navigation",
+                                contentDescription = "Close navigation",
                                 tint = DangerCrimson
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    Text(
-                        text = navData.currentStep?.instruction ?: "Proceed straight along the path",
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    VisualRouteMapCanvas(navData = navData)
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    // Single, direct Google Maps walking button
+                    Button(
+                        onClick = onOpenGoogleMaps,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .testTag("open_gmaps_nav_btn"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrightCyan)
                     ) {
-                        Text(
-                            text = "Remaining: ${navData.remainingDistanceMeters}m (~${navData.estimatedDurationMinutes} min)",
-                            style = MaterialTheme.typography.titleSmall.copy(color = GoldenAmber)
+                        Icon(
+                            imageVector = Icons.Default.Map,
+                            contentDescription = null,
+                            tint = ObsidianBackground,
+                            modifier = Modifier.size(22.dp)
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Step ${(navData.currentStepIndex + 1)} of ${navData.steps.size}",
-                            style = MaterialTheme.typography.labelMedium.copy(color = TextMuted)
+                            text = when (lang) {
+                                AppLanguage.MARATHI -> "गुगल मॅप्स उघडा (Google Maps)"
+                                AppLanguage.HINDI -> "गूगल मैप्स खोलें (Google Maps)"
+                                AppLanguage.ENGLISH -> "Open in Google Maps"
+                            },
+                            color = ObsidianBackground,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    OutlinedButton(
+                        onClick = onShareLocation,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("share_gmaps_link_btn"),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Button(
-                            onClick = onOpenGoogleMaps,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
-                                .testTag("open_gmaps_nav_btn"),
-                            colors = ButtonDefaults.buttonColors(containerColor = BrightCyan)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Map,
-                                contentDescription = null,
-                                tint = ObsidianBackground,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Google Maps Voice", color = ObsidianBackground, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = onShareLocation,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
-                                .testTag("share_gmaps_link_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = null,
-                                tint = TextPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(AppStrings.sendLocation(lang), color = TextPrimary, fontSize = 12.sp)
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            tint = TextPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = AppStrings.sendLocation(lang),
+                            color = TextPrimary,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
@@ -944,44 +930,6 @@ private fun FrontObstacleRadarCard(
     }
 }
 
-@Composable
-private fun VisualRouteMapCanvas(navData: NavigationData) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(110.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = ObsidianBackground)
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            val w = size.width
-            val h = size.height
-
-            drawCircle(color = BrightCyan, radius = 10f, center = Offset(24f, h * 0.75f))
-            drawCircle(color = GoldenAmber, radius = 12f, center = Offset(w - 24f, h * 0.25f))
-
-            val p1 = Offset(24f, h * 0.75f)
-            val p2 = Offset(w * 0.35f, h * 0.75f)
-            val p3 = Offset(w * 0.55f, h * 0.35f)
-            val p4 = Offset(w - 24f, h * 0.25f)
-
-            drawLine(color = BrightCyan, start = p1, end = p2, strokeWidth = 5f, cap = StrokeCap.Round)
-            drawLine(color = BrightCyan, start = p2, end = p3, strokeWidth = 5f, cap = StrokeCap.Round)
-            drawLine(
-                color = BrightCyan, start = p3, end = p4, strokeWidth = 5f, cap = StrokeCap.Round,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(15f, 10f), 0f)
-            )
-
-            val currentFraction = if (navData.steps.isNotEmpty()) {
-                (navData.currentStepIndex.toFloat() / navData.steps.size.toFloat()).coerceIn(0.1f, 0.95f)
-            } else 0.2f
-
-            val currentPos = Offset(w * currentFraction, h * 0.55f)
-            drawCircle(color = Color.White, radius = 14f, center = currentPos, style = Stroke(width = 3f))
-            drawCircle(color = DangerCrimson, radius = 7f, center = currentPos)
-        }
-    }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1196,6 +1144,10 @@ private fun ScanModeContent(
         }
     }
 }
+// ============================================================================
+// 2. In ui/DrishtiMainScreen.kt: Update AssistantModeContent() suggestions list
+// ============================================================================
+
 
 @Composable
 private fun AssistantModeContent(
@@ -1254,11 +1206,11 @@ private fun AssistantModeContent(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            // 4 Clean, Meaningful Questions (No clutter, directly accessible)
             val suggestions = listOf(
                 AppStrings.queryWhereAmI(lang),
-                AppStrings.queryShareLocation(lang),
-                AppStrings.queryFrontObstacle(lang),
-                AppStrings.queryTakeMeHome(lang)
+                AppStrings.queryTakeMeHome(lang),
+                AppStrings.queryMyEmergencyDetails(lang)
             )
 
             suggestions.forEach { query ->

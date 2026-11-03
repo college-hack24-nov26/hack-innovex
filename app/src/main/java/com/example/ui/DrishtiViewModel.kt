@@ -621,30 +621,45 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleVoiceListening() {
         if (_uiState.value.isListening) {
-            stopVoiceListening()
+            voiceManager.stopListening()
+            _uiState.value = _uiState.value.copy(isListening = false)
         } else {
             startVoiceListening()
         }
     }
 
+// ============================================================================
+// 3. In ui/DrishtiViewModel.kt: Replace startVoiceListening() (around Line 580)
+//    (Stops ongoing TTS speech first so TTS doesn't block the microphone!)
+// ============================================================================
+
     fun startVoiceListening() {
+        // 1. Immediately kill any TTS speech that is currently holding audio focus
+        alertManager.stopAllSpeech()
+
+        // 2. Play light click haptic & sound
         alertManager.triggerHaptic(VibrationPattern.CONFIRM_SHORT)
         alertManager.triggerTone(ToneType.NAV_CHIME)
+
+        val lang = _uiState.value.userSettings.language
+
+        // 3. Immediately set state to listening on the first click!
         _uiState.value = _uiState.value.copy(
             isListening = true,
-            recognizedText = "Listening..."
+            recognizedText = AppStrings.listeningPrompt(lang)
         )
 
+        // 4. Start recognizer cleanly
         voiceManager.startListening(
+            lang = lang,
             onResult = { query ->
                 handleSpokenCommand(query)
             },
             onError = { _ ->
                 _uiState.value = _uiState.value.copy(
                     isListening = false,
-                    recognizedText = "Tap to speak or choose a command below."
+                    recognizedText = AppStrings.tapToSpeakSubtitle(lang)
                 )
-                alertManager.speakNowLoudly("Tap to speak.")
             }
         )
     }
@@ -654,13 +669,6 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = _uiState.value.copy(isListening = false)
     }
 
-    // ============================================================================
-// In DrishtiViewModel.kt:
-// Press Ctrl + F and search for: fun handleSpokenCommand
-// You have TWO "fun handleSpokenCommand(query: String)" functions in DrishtiViewModel.kt!
-// DELETE the old one so ONLY THIS ONE remains:
-// ============================================================================
-
     fun handleSpokenCommand(query: String) {
         if (query.isBlank()) return
         _uiState.value = _uiState.value.copy(
@@ -669,46 +677,50 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         )
 
         val lower = query.lowercase().trim()
+        val lang = _uiState.value.userSettings.language
+        val settings = _uiState.value.userSettings
 
-        // 1. Intercept "More" / "Read All" / "Full Text" voice command
+        // Intercept Voice Follow-ups
         if (lower == "more" || lower.contains("read more") || lower.contains("read all") ||
-            lower.contains("full text") || lower.contains("अधिक") || lower.contains("और") ||
-            lower.contains("पूर्ण वाचा") || lower.contains("पूरा पढ़ें")) {
+            lower.contains("अधिक") || lower.contains("और") || lower.contains("पूर्ण वाचा")
+        ) {
             readMoreScannedText()
             return
         }
 
-        // 2. Intercept "Repeat" voice command
         if (lower == "repeat" || lower.contains("say again") || lower.contains("पुन्हा") || lower.contains("फिर से")) {
             val lastMsg = _uiState.value.aiVisionDescription.ifBlank { _uiState.value.lastSpokenMessage }
             alertManager.speakDocumentScan(lastMsg)
             return
         }
 
-        // 3. Intercept "Spell" voice command
-        if (lower.contains("spell") || lower.contains("अक्षर")) {
-            val titleToSpell = _uiState.value.latestScanResult?.title ?: _uiState.value.aiVisionDescription.take(20)
-            val spelled = titleToSpell.filter { it.isLetterOrDigit() }.map { "$it " }.joinToString("").trim()
-            alertManager.speakDocumentScan("Spelling: $spelled")
-            return
-        }
-
         val locDesc = navigationManager.navState.value.currentStreet.ifEmpty { "pedestrian walkway" }
         val obsList = _uiState.value.obstacles.joinToString(", ") {
-            "${it.label} ${it.direction.spoken} at ${String.format(java.util.Locale.US, "%.1f", it.distanceMeters)}m"
+            "${it.getSpokenObjectName(lang)} ${it.direction.getSpoken(lang)} (${String.format(java.util.Locale.US, "%.1f", it.distanceMeters)}m)"
         }
         val uLat = navigationManager.navState.value.userLatitude
         val uLng = navigationManager.navState.value.userLongitude
-        val lang = _uiState.value.userSettings.language
 
         viewModelScope.launch {
+            // Extract latest scan content to feed directly into the assistant
+            val scannedInfo = when {
+                _uiState.value.aiVisionDescription.isNotBlank() && !_uiState.value.aiVisionDescription.contains("Scanning") ->
+                    _uiState.value.aiVisionDescription
+                _uiState.value.latestScanResult != null ->
+                    "${_uiState.value.latestScanResult!!.title}. ${_uiState.value.latestScanResult!!.details}"
+                else -> ""
+            }
+
             val action = geminiAssistant.processUserCommand(
                 query = query,
                 currentLocationDesc = locDesc,
                 visibleObstaclesDesc = obsList,
                 userLat = uLat,
                 userLng = uLng,
-                lang = lang
+                lang = lang,
+                settings = settings,
+                currentMode = _uiState.value.currentMode,
+                scannedContent = scannedInfo
             )
 
             when (action) {
@@ -726,37 +738,32 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
                 is AssistantAction.ScanRequest -> {
-                    switchMode(AppMode.SCAN)
                     val sType = when (action.scanType) {
                         "DOCUMENTS" -> ScanType.DOCUMENTS
                         "CURRENCY" -> ScanType.CURRENCY
                         "MEDICINE" -> ScanType.MEDICINE
                         else -> ScanType.ALL
                     }
-                    setScanType(sType)
+                    _uiState.value = _uiState.value.copy(
+                        currentMode = AppMode.SCAN,
+                        scanType = sType
+                    )
+                    scanDocumentHybrid()
                 }
                 is AssistantAction.ShareLocation -> {
                     navigationManager.shareCurrentLocation()
-                    alertManager.speakNowLoudly("Location link shared.")
+                    alertManager.speakNowLoudly(action.spokenPrompt)
                 }
                 is AssistantAction.TriggerSOS -> triggerEmergencySOS()
                 is AssistantAction.NavigateHome -> {
-                    val home = _uiState.value.userSettings.homeAddress
-                    if (home.isNotBlank()) {
-                        startNavigation(home)
-                        alertManager.speakNowLoudly(action.spokenPrompt)
-                    } else {
-                        alertManager.speakNowLoudly("Home address not saved in Settings.")
-                    }
+                    val home = settings.homeAddress.ifBlank { "Home" }
+                    startNavigation(home)
+                    alertManager.speakNowLoudly(action.spokenPrompt)
                 }
                 is AssistantAction.NavigateWork -> {
-                    val work = _uiState.value.userSettings.workAddress
-                    if (work.isNotBlank()) {
-                        startNavigation(work)
-                        alertManager.speakNowLoudly(action.spokenPrompt)
-                    } else {
-                        alertManager.speakNowLoudly("Work address not saved in Settings.")
-                    }
+                    val work = settings.workAddress.ifBlank { "Work" }
+                    startNavigation(work)
+                    alertManager.speakNowLoudly(action.spokenPrompt)
                 }
                 is AssistantAction.LookAround -> triggerLookAround()
                 is AssistantAction.ToggleTorch -> {
@@ -772,8 +779,16 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         if (destination.isNotBlank()) {
             switchMode(AppMode.WALKING)
             navigationManager.startWalkingRoute(destination)
+            val lang = _uiState.value.userSettings.language
+            val prompt = when (lang) {
+                AppLanguage.MARATHI -> "$destination साठी गुगल मॅप्स उघडत आहे."
+                AppLanguage.HINDI -> "$destination के लिए गूगल मैप्स खोला जा रहा है।"
+                AppLanguage.ENGLISH -> "Opening Google Maps walking route to $destination."
+            }
+            alertManager.speakNowLoudly(prompt)
         }
     }
+
 
     fun stopNavigation() {
         navigationManager.stopNavigation()
@@ -784,7 +799,13 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
     fun openInGoogleMaps() {
         val launched = navigationManager.openInGoogleMapsApp()
         if (launched) {
-            alertManager.speakNowLoudly("Opening Google Maps.")
+            val lang = _uiState.value.userSettings.language
+            val msg = when (lang) {
+                AppLanguage.MARATHI -> "गुगल मॅप्स उघडत आहे."
+                AppLanguage.HINDI -> "गूगल मैप्स खोला जा रहा है।"
+                AppLanguage.ENGLISH -> "Opening Google Maps."
+            }
+            alertManager.speakNowLoudly(msg)
         }
     }
 
@@ -1038,22 +1059,6 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         alertManager.triggerHaptic(VibrationPattern.CONFIRM_SHORT)
         alertManager.speakNowLoudly("Reading document...")
 
-        viewModelScope.launch {
-            val prompt = """
-            You are an accessibility document reader for a blind person in India.
-            Look at this image. If it is an ID card (PAN, Aadhaar, Voter ID, Driving License):
-            1. State exact document type.
-            2. State full name.
-            3. State ID number.
-            If it is medicine or food: state the brand name and expiry date.
-            Keep response under 25 words in clear, plain spoken language without markdown or asterisks.
-        """.trimIndent()
-
-            val result = geminiAssistant.analyzeImageWithGemini(bitmap, prompt)
-                ?: infoReader.evaluateDocumentFromBitmap(bitmap, _uiState.value.scanType).spokenAnnouncement
-            _uiState.value = _uiState.value.copy(aiVisionDescription = result)
-            alertManager.speakNowLoudly(result)
-        }
     }
 
     // ============================================================================

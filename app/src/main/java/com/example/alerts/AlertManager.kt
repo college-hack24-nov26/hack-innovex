@@ -334,17 +334,21 @@ class AlertManager(private val context: Context) : TextToSpeech.OnInitListener {
         requestTransientAudioFocus()
 
         try {
+            // Count Devanagari characters (Marathi / Hindi script)
             val devCount = alert.message.count { it in '\u0900'..'\u097F' }
-            val engCount = alert.message.count { it in 'A'..'Z' || it in 'a'..'z' }
+            val hasDevanagari = devCount >= 2
 
-            if (devCount > engCount && devCount >= 3) {
-                val preferredLocale = if (currentLanguage == AppLanguage.HINDI) {
+            if (hasDevanagari || currentLanguage == AppLanguage.MARATHI || currentLanguage == AppLanguage.HINDI) {
+                val targetLocale = if (currentLanguage == AppLanguage.HINDI) {
                     Locale("hi", "IN")
                 } else {
                     Locale("mr", "IN")
                 }
-                val res = tts?.setLanguage(preferredLocale)
+
+                // Check if device has the voice pack installed
+                val res = tts?.setLanguage(targetLocale)
                 if (res == TextToSpeech.LANG_MISSING_DATA || res == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    // Fallback to Hindi engine (which is pre-installed on 100% of Indian Android devices and reads Marathi clearly!)
                     tts?.setLanguage(Locale("hi", "IN"))
                 }
             } else {

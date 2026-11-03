@@ -211,93 +211,69 @@ class NavigationManager(private val context: Context) {
      * Start walking route to a user-specified destination query using pedestrian routing.
      */
     fun startWalkingRoute(destinationQuery: String) {
-        scope.launch {
-            val currentLoc = _navState.value
-            val lat = currentLoc.userLatitude
-            val lng = currentLoc.userLongitude
+        val s = _navState.value
+        val lat = s.userLatitude
+        val lng = s.userLongitude
+        val cleanDest = destinationQuery.trim().replaceFirstChar { it.uppercase() }
 
-            // Geocode destination if possible
-            var destLat = lat + 0.0035
-            var destLng = lng + 0.0020
-            var resolvedName = destinationQuery.trim().replaceFirstChar { it.uppercase() }
+        val gMapsUrl = if (lat != 0.0 && lng != 0.0) {
+            "https://www.google.com/maps/dir/?api=1&origin=$lat,$lng&destination=${Uri.encode(cleanDest)}&travelmode=walking"
+        } else {
+            "https://www.google.com/maps/dir/?api=1&destination=${Uri.encode(cleanDest)}&travelmode=walking"
+        }
 
-            try {
-                @Suppress("DEPRECATION")
-                val found = geocoder.getFromLocationName(destinationQuery, 1)
-                if (!found.isNullOrEmpty()) {
-                    destLat = found[0].latitude
-                    destLng = found[0].longitude
-                    resolvedName = found[0].featureName ?: resolvedName
-                }
-            } catch (e: Exception) {
-                Log.w(tag, "Geocoder query fallback: ${e.message}")
+        _navState.value = _navState.value.copy(
+            destination = cleanDest,
+            isNavigating = true,
+            isArrived = false,
+            isOffRoute = false,
+            currentStepIndex = 0,
+            steps = emptyList(), // No in-detail steps!
+            totalDistanceMeters = 0,
+            remainingDistanceMeters = 0,
+            estimatedDurationMinutes = 0,
+            googleMapsUrl = gMapsUrl
+        )
+
+        // Directly open Google Maps Walking Mode!
+        openInGoogleMapsApp(cleanDest)
+    }
+
+    /**
+     * Launch native Google Maps app walking turn-by-turn voice navigation.
+     */
+    fun openInGoogleMapsApp(destName: String = ""): Boolean {
+        val s = _navState.value
+        val destination = destName.ifBlank { s.destination }.ifBlank { "Destination" }
+        val lat = s.userLatitude
+        val lng = s.userLongitude
+
+        // Native Google Maps Walking Navigation Intent
+        val navUri = if (lat != 0.0 && lng != 0.0) {
+            Uri.parse("google.navigation:q=${Uri.encode(destination)}&mode=w")
+        } else {
+            Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode(destination)}&travelmode=walking")
+        }
+
+        val mapIntent = Intent(Intent.ACTION_VIEW, navUri).apply {
+            setPackage("com.google.android.apps.maps")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        return try {
+            context.startActivity(mapIntent)
+            true
+        } catch (_: Exception) {
+            // Web browser fallback if Google Maps app is disabled
+            val webUri = Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode(destination)}&travelmode=walking")
+            val fallbackIntent = Intent(Intent.ACTION_VIEW, webUri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-
-            val dLat = destLat - lat
-            val dLng = destLng - lng
-
-            val steps = listOf(
-                NavStep(
-                    stepIndex = 0,
-                    instruction = "Walk straight 45 meters along the tactile walking path",
-                    distanceMeters = 45,
-                    maneuver = ManeuverType.STRAIGHT,
-                    streetName = currentLoc.currentStreet.ifBlank { "Pedestrian Footpath" },
-                    latitude = lat + (dLat * 0.25),
-                    longitude = lng + (dLng * 0.1)
-                ),
-                NavStep(
-                    stepIndex = 1,
-                    instruction = "Turn left at the tactile paving, walk 70 meters towards crossing",
-                    distanceMeters = 70,
-                    maneuver = ManeuverType.TURN_LEFT,
-                    streetName = "Station Access Road",
-                    latitude = lat + (dLat * 0.6),
-                    longitude = lng + (dLng * 0.4)
-                ),
-                NavStep(
-                    stepIndex = 2,
-                    instruction = "Turn right, walk 35 meters straight towards entrance",
-                    distanceMeters = 35,
-                    maneuver = ManeuverType.TURN_RIGHT,
-                    streetName = "Main Entry Promenade",
-                    latitude = lat + (dLat * 0.9),
-                    longitude = lng + (dLng * 0.8)
-                ),
-                NavStep(
-                    stepIndex = 3,
-                    instruction = "You have arrived at $resolvedName. Destination is directly ahead.",
-                    distanceMeters = 15,
-                    maneuver = ManeuverType.ARRIVE,
-                    streetName = resolvedName,
-                    latitude = destLat,
-                    longitude = destLng
-                )
-            )
-
-            val totalDistance = steps.sumOf { it.distanceMeters }
-            val walkMins = max(1, totalDistance / 70) // ~70 meters per minute walking speed
-
-            val gMapsUrl = "https://www.google.com/maps/dir/?api=1&origin=$lat,$lng&destination=${Uri.encode(resolvedName)}&travelmode=walking"
-
-            withContext(Dispatchers.Main) {
-                _navState.value = _navState.value.copy(
-                    destination = resolvedName,
-                    isNavigating = true,
-                    isArrived = false,
-                    isOffRoute = false,
-                    currentStepIndex = 0,
-                    steps = steps,
-                    totalDistanceMeters = totalDistance,
-                    remainingDistanceMeters = totalDistance,
-                    estimatedDurationMinutes = walkMins,
-                    destLatitude = destLat,
-                    destLongitude = destLng,
-                    googleMapsUrl = gMapsUrl
-                )
-                onInstructionAnnounce?.invoke(
-                    "Walking route to $resolvedName found. Total distance is $totalDistance meters, approximately $walkMins minutes walk. ${steps[0].instruction}"
-                )
+            try {
+                context.startActivity(fallbackIntent)
+                true
+            } catch (_: Exception) {
+                false
             }
         }
     }
