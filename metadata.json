@@ -1,0 +1,6 @@
+{
+  "name": "Drishti",
+  "description": "AI Navigation & Safety Assistant for visually impaired individuals with real-time obstacle alerts, voice assistant, walking guidance, and currency reader.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

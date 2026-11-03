@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">AuraSight</string>
+    <string name="app_subtitle">Smart Vision &amp; AI Navigation Guide</string>
+    <string name="disclaimer">Assistive aid only. Always use alongside a white cane or human guide.</string>
+    <string name="mode_walking">Walking Mode</string>
+    <string name="mode_scan">Scan Mode</string>
+    <string name="mode_assistant">Assistant Mode</string>
+    <string name="btn_voice_assistant">Speak to Assistant</string>
+    <string name="btn_scan_currency">Read Currency</string>
+    <string name="btn_scan_bus">Read Bus Number</string>
+    <string name="btn_scan_text">Read Text &amp; Signs</string>
+    <string name="btn_stop_nav">Stop Navigation</string>
+    <string name="status_listening">Listening… Speak now</string>
+    <string name="status_ready">AuraSight ready. Tap anywhere to speak or choose a mode.</string>
+</resources>
