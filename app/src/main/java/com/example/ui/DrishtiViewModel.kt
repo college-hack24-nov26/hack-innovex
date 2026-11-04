@@ -118,6 +118,9 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    private var shakeCount = 0
+    private var lastShakeTimestamp = 0L
+
     private val fallSensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent?) {
             event?.values?.let { v ->
@@ -127,12 +130,32 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
                 val gForce = kotlin.math.sqrt(x * x + y * y + z * z)
                 val now = System.currentTimeMillis()
 
-                if (gForce < 2.0f) {
+                // 1. Free-fall detection (< 3.5 m/s^2)
+                if (gForce < 3.5f) {
                     lastFreeFallTimestamp = now
                 }
 
-                if (gForce > 26.0f && (now - lastFreeFallTimestamp < 600L)) {
+                // 2. Real Drop + Impact (> 21.0 m/s^2 after free-fall)
+                val isRealDrop = (gForce > 21.0f && (now - lastFreeFallTimestamp in 40L..800L))
+
+                // 3. Deliberate Firm Shake (> 22.5 m/s^2 twice within 700ms)
+                var isDeliberateShake = false
+                if (gForce > 22.5f && (now - lastShakeTimestamp > 180L)) {
+                    if (now - lastShakeTimestamp < 700L) {
+                        shakeCount++
+                    } else {
+                        shakeCount = 1
+                    }
+                    lastShakeTimestamp = now
+                    if (shakeCount >= 2) {
+                        isDeliberateShake = true
+                        shakeCount = 0
+                    }
+                }
+
+                if (isRealDrop || isDeliberateShake) {
                     lastFreeFallTimestamp = 0L
+                    shakeCount = 0
                     if (!_uiState.value.isFallDetected) {
                         triggerFallAlert()
                     }
