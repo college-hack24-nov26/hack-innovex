@@ -37,6 +37,17 @@ object AppStrings {
         }
     }
 
+    fun fallDetectedWarning(lang: AppLanguage, secondsLeft: Int) = when (lang) {
+        AppLanguage.MARATHI -> "सावधान! तुम्ही पडल्याचे आढळले आहे. तुम्ही ठीक आहात का? रद्द करण्यासाठी स्क्रीनवर दाबा. $secondsLeft सेकंदात आपत्कालीन मेसेज जाईल."
+        AppLanguage.HINDI -> "सावधान! आपके गिरने का पता चला है। क्या आप ठीक हैं? रद्द करने के लिए स्क्रीन पर टैप करें। $secondsLeft सेकंड में आपातकालीन संदेश जाएगा।"
+        AppLanguage.ENGLISH -> "Warning! Fall detected. Are you okay? Tap screen or say cancel to abort. Sending emergency SOS in $secondsLeft seconds."
+    }
+
+    fun fallCancelled(lang: AppLanguage) = when (lang) {
+        AppLanguage.MARATHI -> "आपत्कालीन इशारा रद्द केला आहे."
+        AppLanguage.HINDI -> "आपातकालीन अलर्ट रद्द कर दिया गया है।"
+        AppLanguage.ENGLISH -> "Emergency alert cancelled. You are safe."
+    }
 
     fun tapToSpeakSubtitle(lang: AppLanguage) = when (lang) {
         AppLanguage.MARATHI -> "'मी कुठे आहे?', 'घरी जा' किंवा काहीही विचारा"

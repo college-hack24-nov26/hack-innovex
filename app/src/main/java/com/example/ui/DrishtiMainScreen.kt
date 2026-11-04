@@ -357,6 +357,72 @@ fun DrishtiMainScreen(
                 )
             }
         }
+
+
+
+        if (uiState.isFallDetected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(DangerCrimson.copy(alpha = 0.96f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { viewModel.cancelFallAlert() }
+                    )
+                    .testTag("fall_emergency_overlay"),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(90.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "FALL DETECTED!",
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Sending Emergency SOS SMS in",
+                        style = MaterialTheme.typography.titleMedium.copy(color = Color.White.copy(alpha = 0.9f))
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "${uiState.fallCountdownSeconds}",
+                        fontSize = 80.sp,
+                        fontWeight = FontWeight.Black,
+                        color = GoldenAmber
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Button(
+                        onClick = { viewModel.cancelFallAlert() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White)
+                    ) {
+                        Text(
+                            text = "I AM OKAY - TAP TO CANCEL",
+                            color = DangerCrimson,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

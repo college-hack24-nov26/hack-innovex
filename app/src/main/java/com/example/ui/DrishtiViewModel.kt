@@ -3,6 +3,7 @@ package com.example.ui
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
+
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -36,6 +37,13 @@ import com.example.model.AppStrings
 import java.util.Collections.list
 import kotlin.math.abs
 
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+
 data class DrishtiUiState(
     val currentMode: AppMode = AppMode.WALKING,
     val scanType: ScanType = ScanType.ALL,
@@ -52,7 +60,9 @@ data class DrishtiUiState(
     val isTorchOn: Boolean = false,
     val isAnalyzingAiVision: Boolean = false,
     val aiVisionDescription: String = "",
-    val userSettings: UserSettings = UserSettings()
+    val userSettings: UserSettings = UserSettings(),
+    val isFallDetected: Boolean = false,       // <-- ADD THIS
+    val fallCountdownSeconds: Int = 0
 )
 
 class DrishtiViewModel(application: Application) : AndroidViewModel(application) {
@@ -77,16 +87,65 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
     private var lastObstacleAlertTime = 0L
     private var lastScanAlertTime = 0L
     private var lastFrameProcessedTime = 0L
-    // Auto-Torch Tracking
-    private var lastAutoTorchCheckTime = 0L
-    private var isAutoTorchActivated = false // Tracks if flash was triggered automatically
 
-    private var activeScanJob: kotlinx.coroutines.Job? = null
+    // SENSORS & FALL DETECTION STATE
+    private val sensorManager: SensorManager? = application.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+    private val lightSensor: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_LIGHT)
+    private val accelerometer: Sensor? = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
-    // Document scanner deduplication latch (Stops endless word repetition!)
-    private var lastScannedCardFingerprint = ""
+    var currentAmbientLux: Float = -1f
+    var lastAutoTorchCheckTime = 0L
+    var isAutoTorchActivated = false
+    var autoTorchTurnedOnTime = 0L
+    var daylightConfirmationCycles = 0
+
+    private var lastFreeFallTimestamp = 0L
+    private var fallCountdownJob: Job? = null
+    private var activeScanJob: Job? = null
+
+    private val fallSensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            event?.values?.let { v ->
+                val x = v[0]
+                val y = v[1]
+                val z = v[2]
+                val gForce = kotlin.math.sqrt(x * x + y * y + z * z)
+                val now = System.currentTimeMillis()
+
+                if (gForce < 2.0f) {
+                    lastFreeFallTimestamp = now
+                }
+
+                if (gForce > 26.0f && (now - lastFreeFallTimestamp < 600L)) {
+                    lastFreeFallTimestamp = 0L
+                    if (!_uiState.value.isFallDetected) {
+                        triggerFallAlert()
+                    }
+                }
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
+
+    private val lightSensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent?) {
+            event?.values?.firstOrNull()?.let { lux ->
+                currentAmbientLux = lux
+            }
+        }
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    }
+
+
     init {
-        // Start silent tactile proximity haptic pulses
+        // Register hardware sensors safely
+        lightSensor?.let {
+            sensorManager?.registerListener(lightSensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+        accelerometer?.let {
+            sensorManager?.registerListener(fallSensorListener, it, SensorManager.SENSOR_DELAY_GAME)
+        }
+
         proximityHapticEngine.start()
 
         // Collect user settings
@@ -249,6 +308,73 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         } catch (e: Throwable) {
             android.util.Log.e("DrishtiViewModel", "Error setting navigation listeners: ${e.message}")
         }
+    }
+
+
+
+
+
+
+    fun triggerFallAlert() {
+        if (_uiState.value.isFallDetected) return
+
+        alertManager.stopAllSpeech()
+        alertManager.triggerHaptic(VibrationPattern.RAPID_DANGER)
+        alertManager.triggerTone(ToneType.HIGH_DANGER)
+
+        val lang = _uiState.value.userSettings.language
+
+        _uiState.value = _uiState.value.copy(
+            isFallDetected = true,
+            fallCountdownSeconds = 15
+        )
+
+        alertManager.speakNowLoudly(AppStrings.fallDetectedWarning(lang, 15), isDanger = true)
+
+        fallCountdownJob?.cancel()
+        fallCountdownJob = viewModelScope.launch {
+            for (sec in 14 downTo 1) {
+                delay(1000L)
+                if (!_uiState.value.isFallDetected) return@launch
+                _uiState.value = _uiState.value.copy(fallCountdownSeconds = sec)
+                if (sec % 3 == 0) {
+                    alertManager.triggerTone(ToneType.HIGH_DANGER)
+                    alertManager.triggerHaptic(VibrationPattern.RAPID_DANGER)
+                }
+            }
+
+            // 15 seconds passed without cancellation -> ANNOUNCE & DISPATCH SOS!
+            if (_uiState.value.isFallDetected) {
+                _uiState.value = _uiState.value.copy(isFallDetected = false, fallCountdownSeconds = 0)
+
+                // 1. Spoken announcement that countdown expired and SOS is being sent!
+                val dispatchingMsg = when (lang) {
+                    AppLanguage.MARATHI -> "वेळ संपली. तुमच्या आपत्कालीन संपर्कांना लोकेशन एसएमएस पाठवत आहे."
+                    AppLanguage.HINDI -> "समय समाप्त। आपके आपातकालीन संपर्कों को लोकेशन एसएमएस भेजा जा रहा है।"
+                    AppLanguage.ENGLISH -> "Time expired. Sending emergency location SMS to your family now."
+                }
+                alertManager.stopAllSpeech()
+                alertManager.speakNowLoudly(dispatchingMsg, isDanger = true)
+
+                delay(1200L)
+
+                // 2. Actually send the SMS with Google Maps coordinates!
+                triggerEmergencySOS()
+            }
+        }
+    }
+
+    fun cancelFallAlert() {
+        if (!_uiState.value.isFallDetected) return
+        fallCountdownJob?.cancel()
+        fallCountdownJob = null
+        _uiState.value = _uiState.value.copy(
+            isFallDetected = false,
+            fallCountdownSeconds = 0
+        )
+        val lang = _uiState.value.userSettings.language
+        alertManager.triggerHaptic(VibrationPattern.CONFIRM_SHORT)
+        alertManager.speakNowLoudly(AppStrings.fallCancelled(lang))
     }
 
     /**
@@ -677,6 +803,13 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         )
 
         val lower = query.lowercase().trim()
+
+        if (_uiState.value.isFallDetected && (lower.contains("cancel") || lower.contains("stop") ||
+                    lower.contains("रद्द") || lower.contains("ठीक") || lower.contains("रोक"))) {
+            cancelFallAlert()
+            return
+        }
+
         val lang = _uiState.value.userSettings.language
         val settings = _uiState.value.userSettings
 
@@ -1113,6 +1246,9 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         voiceManager.release()
         navigationManager.stopLocationUpdates()
         binauralAudioEngine.release()
+        try {
+            sensorManager?.unregisterListener(fallSensorListener)
+        } catch (_: Exception) {}
     }
 
 
