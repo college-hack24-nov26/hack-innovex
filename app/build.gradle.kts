@@ -149,6 +149,7 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   implementation(libs.bundles.tensorflow)
   implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+  implementation("com.github.mik3y:usb-serial-for-android:3.8.0")
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 

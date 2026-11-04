@@ -3,7 +3,7 @@ package com.example.ui
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
-
+import com.example.UsbBridgeManager
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -103,6 +103,21 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
     private var fallCountdownJob: Job? = null
     private var activeScanJob: Job? = null
 
+    private var lastIotAlertTime = 0L
+
+    private val usbBridgeManager by lazy {
+        com.example.UsbBridgeManager(
+            context = application,
+            onConnected = {
+                alertManager.triggerHaptic(VibrationPattern.CONFIRM_SHORT)
+                alertManager.speakNowLoudly("IoT ultrasonic sensor connected.")
+            },
+            onDistanceAlert = { distanceCm ->
+                handleIotDistanceAlert(distanceCm)
+            }
+        )
+    }
+
     private val fallSensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent?) {
             event?.values?.let { v ->
@@ -138,6 +153,7 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
 
 
     init {
+        usbBridgeManager.start()
         // Register hardware sensors safely
         lightSensor?.let {
             sensorManager?.registerListener(lightSensorListener, it, SensorManager.SENSOR_DELAY_NORMAL)
@@ -470,6 +486,38 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = _uiState.value.copy(isTorchOn = newState)
         val lang = _uiState.value.userSettings.language
         alertManager.speakNowLoudly(if (newState) AppStrings.torchOn(lang) else AppStrings.torchOff(lang))
+    }
+
+    private fun handleIotDistanceAlert(distanceCm: Int) {
+        val now = System.currentTimeMillis()
+        if (now - lastIotAlertTime < 2200L) return
+        lastIotAlertTime = now
+
+        val lang = _uiState.value.userSettings.language
+
+        val warningMsg = when (lang) {
+            AppLanguage.MARATHI -> "सावधान! $distanceCm सेंटीमीटरवर भिंत किंवा अडथळा आहे. थांबा!"
+            AppLanguage.HINDI -> "सावधान! $distanceCm सेंटीमीटर पर दीवार या रुकावट है। रुकिए!"
+            AppLanguage.ENGLISH -> "Warning! Obstacle $distanceCm centimeters ahead. Stop!"
+        }
+
+        // Show on screen radar & top banner immediately
+        val iotObstacle = Obstacle(
+            trackId = 7777,
+            category = ObstacleCategory.WALL,
+            label = "IoT Sensor ($distanceCm cm)",
+            distanceMeters = (distanceCm / 100f),
+            direction = Direction.CENTER,
+            severity = ObstacleSeverity.DANGER,
+            confidence = 0.99f
+        )
+        _uiState.value = _uiState.value.copy(
+            obstacles = listOf(iotObstacle),
+            lastSpokenMessage = warningMsg
+        )
+
+        // Play loud danger beep, emergency vibration, and voice warning
+        alertManager.speakNowLoudly(warningMsg, isDanger = true)
     }
 
     // 2. In switchMode():
@@ -1246,6 +1294,7 @@ class DrishtiViewModel(application: Application) : AndroidViewModel(application)
         voiceManager.release()
         navigationManager.stopLocationUpdates()
         binauralAudioEngine.release()
+        usbBridgeManager.stop()
         try {
             sensorManager?.unregisterListener(fallSensorListener)
         } catch (_: Exception) {}
